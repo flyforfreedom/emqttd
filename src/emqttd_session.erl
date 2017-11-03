@@ -693,18 +693,20 @@ dispatch(Msg, State = #state{client_pid = undefined}) ->
 
 %% Deliver qos0 message directly to client
 dispatch(Msg = #mqtt_message{qos = ?QOS0}, State) ->
-    deliver(Msg, State), State;
+    Msg1 = reset_dup(Msg),
+    deliver(Msg1, State), State;
 
 dispatch(Msg = #mqtt_message{qos = QoS},
          State = #state{next_msg_id = MsgId, inflight = Inflight})
     when QoS =:= ?QOS1 orelse QoS =:= ?QOS2 ->
+    Msg1 = reset_dup(Msg),
     case Inflight:is_full() of
         true  ->
-            enqueue_msg(Msg, State);
+            enqueue_msg(Msg1, State);
         false ->
-            Msg1 = Msg#mqtt_message{pktid = MsgId},
-            deliver(Msg1, State),
-            await(Msg1, next_msg_id(State))
+            Msg2 = Msg1#mqtt_message{pktid = MsgId},
+            deliver(Msg2, State),
+            await(Msg2, next_msg_id(State))
     end.
 
 enqueue_msg(Msg, State = #state{mqueue = Q}) ->
@@ -800,6 +802,14 @@ tune_qos(Topic, Msg = #mqtt_message{qos = PubQoS},
         error ->
             Msg
     end.
+
+%%--------------------------------------------------------------------
+%% Reset Dup
+%%--------------------------------------------------------------------
+
+reset_dup(Msg = #mqtt_message{dup = true}) ->
+    Msg#mqtt_message{dup = false};
+reset_dup(Msg) -> Msg.
 
 %%--------------------------------------------------------------------
 %% Next Msg Id
